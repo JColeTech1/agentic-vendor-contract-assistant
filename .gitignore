@@ -1,0 +1,10 @@
+# ── Local test files with hardcoded hackathon credentials — NEVER commit ──
+test.html
+test.ps1
+serve.ps1
+.env.local
+env.download
+
+# ── Node / Vite build artifacts ──
+node_modules/
+dist/
