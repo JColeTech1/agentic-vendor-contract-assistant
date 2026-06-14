@@ -49,7 +49,6 @@ function ConversationsRail({ convos, activeId, onSelect, onNew, onDelete, onRena
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")} onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}>»</button>
         <button onClick={onNew} title="New chat" style={{ background: "var(--surface-2)", border: "1px solid var(--border-strong)", cursor: "pointer", color: "var(--text-primary)", fontSize: 16, width: 32, height: 32, display: "grid", placeItems: "center", borderRadius: "var(--radius)" }}>＋</button>
         <div style={{ flex: 1 }} />
-        <span title={memoryOn ? "Memory on" : "Memory off"} style={{ color: memoryOn ? "var(--ok)" : "var(--text-muted)", fontSize: 13 }}>✦</span>
       </aside>
     );
   }
@@ -75,9 +74,6 @@ function ConversationsRail({ convos, activeId, onSelect, onNew, onDelete, onRena
             </React.Fragment>
           );
         })}
-      </div>
-      <div style={{ padding: "10px 14px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "var(--text-muted)" }}>
-        <span style={{ color: memoryOn ? "var(--ok)" : "var(--text-muted)" }}>✦</span> {memoryOn ? "Memory on · recalls facts across chats" : "Memory off"}
       </div>
     </aside>
   );

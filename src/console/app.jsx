@@ -5,7 +5,7 @@ import { KnowledgeBaseTab as S_KB } from "./KnowledgeBaseTab.jsx";
 import { GraphTab as S_Graph } from "./GraphTab.jsx";
 import { WorkbookTab as S_Workbook } from "./WorkbookTab.jsx";
 import { SettingsPage as S_Settings } from "./SettingsPage.jsx";
-import { demoAnswer as S_demoAnswer, recosFromCitations } from "./chat.jsx";
+import { demoAnswer as S_demoAnswer, recosFromCitations, citationsFromAnswer } from "./chat.jsx";
 import * as SDATA from "./data.js";
 import { askContract, checkConnection } from "../lib/foundry.js";
 import React, { useState as sUseState, useEffect as sUseEffect, useRef as sUseRef } from "react";
@@ -13,7 +13,7 @@ import React, { useState as sUseState, useEffect as sUseEffect, useRef as sUseRe
 const TABS = [
   { id: "assistant", label: "Assistant" },
   { id: "knowledge", label: "Knowledge base" },
-  { id: "graph", label: "Graph" },
+  { id: "graph", label: "Web graph" },
   { id: "workbooks", label: "Workbooks" },
 ];
 
@@ -22,7 +22,7 @@ const readLS = (k, fb) => { try { const v = JSON.parse(localStorage.getItem(k));
 const writeLS = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
 // ───────── Settings store ─────────
-const SETTINGS_DEFAULTS = { theme: "dark", cb: false, alertMode: "auto", lead: 45, workflow: "kanban" };
+const SETTINGS_DEFAULTS = { theme: "dark", cb: false, alertMode: "manual", lead: 45, workflow: "kanban" };
 function useSettings() {
   const [s, setS] = sUseState(() => ({ ...SETTINGS_DEFAULTS, ...readLS(LS.settings, {}) }));
   sUseEffect(() => {
@@ -40,17 +40,18 @@ function useReview() {
   const [addedId, setAddedId] = sUseState(null);
   const [filedIds, setFiledIds] = sUseState(() => new Set());
   const hasItem = (id) => items.some((i) => i.id === id);
-  const addItems = (recos) => {
+  const addItems = (recos, ctx = {}) => {
     const ids = new Set(items.map((i) => i.id));
     const toAdd = recos.filter((r) => !ids.has(r.id));
     if (!toAdd.length) return;
-    const built = toAdd.map((r) => SDATA.reviewItemFromContract(r.id, { label: r.label, priority: r.priority, source: "agent" })).filter(Boolean);
+    const built = toAdd.map((r) => SDATA.reviewItemFromContract(r.id, { label: r.label, priority: r.priority, source: "agent", sourceChat: ctx.sourceChat, answerExcerpt: ctx.answerExcerpt })).filter(Boolean);
     setItems([...items, ...built].sort((a, b) => a.days - b.days));
     setAddedId(built[built.length - 1].id);
     setTimeout(() => setAddedId(null), 2200);
   };
   const fileNotice = (id) => setFiledIds((prev) => new Set(prev).add(id));
-  return { items, addItems, hasItem, addedId, filedIds, fileNotice };
+  const removeItem = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
+  return { items, addItems, hasItem, addedId, filedIds, fileNotice, removeItem };
 }
 
 // ───────── Memory store ─────────
@@ -61,10 +62,13 @@ const MEMORY_DEFAULTS = [
   { id: "m4", text: "Flag any vendor handling PHI or employee SSNs", kind: "policy" },
 ];
 function useMemory() {
-  const [enabled, setEnabled] = sUseState(() => { const v = readLS("cci-mem-on", true); return v !== false; });
+  // OFF by default: with memory on we prepend facts to every question, which
+  // changes the agent's answers. Keep parity with a bare prompt unless the user
+  // opts in. (New LS key so any previously-persisted "on" doesn't carry over.)
+  const [enabled, setEnabled] = sUseState(() => readLS("cci-mem-enabled", false) === true);
   const [facts, setFacts] = sUseState(() => readLS("cci-memory", MEMORY_DEFAULTS));
   sUseEffect(() => writeLS("cci-memory", facts), [facts]);
-  sUseEffect(() => writeLS("cci-mem-on", enabled), [enabled]);
+  sUseEffect(() => writeLS("cci-mem-enabled", enabled), [enabled]);
   const add = (text) => { const t = (text || "").trim(); if (!t) return; setFacts((f) => [...f, { id: "m" + Date.now(), text: t, kind: "fact" }]); };
   const forget = (id) => setFacts((f) => f.filter((x) => x.id !== id));
   return { enabled, setEnabled, facts, add, forget };
@@ -110,7 +114,10 @@ function useChats() {
     const res = await askContract(q, { memory });
     let answer, citations, queryPlan, recos, live;
     if (res.live) {
-      answer = res.answer; citations = res.citations || []; queryPlan = res.queryPlan || [];
+      answer = res.answer; queryPlan = res.queryPlan || [];
+      // Prefer the agent's retrieval-derived citations; if it computed the answer
+      // (no retrieval), map vendors named in the answer to their source files.
+      citations = (res.citations && res.citations.length) ? res.citations : citationsFromAnswer(answer);
       recos = recosFromCitations(citations); live = true;
     } else {
       const d = S_demoAnswer(q, memory);
@@ -174,6 +181,11 @@ function App() {
     checkConnection().then((c) => setConn({ status: c.status, label: c.status === "live" ? "Foundry agent connected" : "Demo mode" }));
   }, []);
 
+  // Provenance helpers — remember which chat/answer produced a queued action.
+  const activeTitle = () => chat.convos.find((c) => c.id === chat.activeId)?.title || "Chat";
+  const ctxFrom = (msg) => ({ sourceChat: { id: chat.activeId, title: activeTitle() }, answerExcerpt: (msg?.text || "").slice(0, 220) });
+  const openChat = (id) => { if (id) chat.selectChat(id); setTab("assistant"); };
+
   // Auto-pilot: when on, urgent recommendations are added to the queue automatically.
   sUseEffect(() => {
     if (settings.alertMode !== "auto") return;
@@ -181,7 +193,7 @@ function App() {
     if (!last || autoProcessed.current.has(last.id)) return;
     autoProcessed.current.add(last.id);
     const urgent = last.recos.filter((r) => r.priority === "urgent");
-    if (urgent.length) review.addItems(urgent);
+    if (urgent.length) review.addItems(urgent, ctxFrom(last));
   }, [chat.messages, settings.alertMode]);
 
   const onSend = (raw) => {
@@ -195,7 +207,7 @@ function App() {
       const lastA = [...chat.messages].reverse().find((m) => m.role === "assistant" && m.recos && m.recos.length);
       chat.addUserMessage(q);
       if (lastA) {
-        review.addItems(lastA.recos);
+        review.addItems(lastA.recos, ctxFrom(lastA));
         chat.addAssistantMessage({ text: `Done — added ${lastA.recos.length} action${lastA.recos.length > 1 ? "s" : ""} to your review queue. They're on your board now with live countdowns.` });
       } else {
         chat.addAssistantMessage({ text: `Ask me about your contracts first — then say “add that to my to-do list” and I'll drop the recommended actions straight onto your board.` });
@@ -221,7 +233,7 @@ function App() {
 
       <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
         {tab === "assistant" && <S_Assistant conversations={chat} chat={chat} input={input} setInput={setInput} onSend={onSend} review={review} settings={settings} memory={memory} onOpenSettings={() => setTab("settings")} />}
-        {tab === "knowledge" && <S_KB />}
+        {tab === "knowledge" && <S_KB review={review} onOpenChat={openChat} />}
         {tab === "graph" && <S_Graph />}
         {tab === "workbooks" && <S_Workbook />}
         {tab === "settings" && <S_Settings settings={settings} memory={memory} />}

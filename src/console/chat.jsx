@@ -68,7 +68,7 @@ function demoAnswer(q, memory) {
   }
   return {
     answer:
-      "I ground every answer in the Contoso contract corpus on SharePoint. Try asking about auto-renewals, notice periods, price escalations, data-privacy obligations, or a specific vendor by name.",
+      "I ground every answer in the Contoso contract corpus. Try asking about auto-renewals, notice periods, price escalations, data-privacy obligations, or a specific vendor by name.",
     citations: [],
     queryPlan: ['parse intent', "no matching filter — suggest scoped queries"],
     recos: [],
@@ -92,4 +92,17 @@ function recosFromCitations(citations) {
   return recos.sort((a, b) => rank[a.priority] - rank[b.priority]).slice(0, 4);
 }
 
-export { demoAnswer, recosFromCitations };
+// Fallback citations for answers the agent computed (no document retrieval, so
+// the server returns no citations): map any vendor named in the answer to its
+// source file via the corpus. Keeps every contract answer verifiable.
+function citationsFromAnswer(answer) {
+  const lower = (answer || "").toLowerCase();
+  const out = [];
+  for (const c of D.contracts) {
+    const token = c.vendor.toLowerCase().split(/\s+/)[0];
+    if (token.length > 3 && lower.includes(token)) out.push(c.file);
+  }
+  return out;
+}
+
+export { demoAnswer, recosFromCitations, citationsFromAnswer };

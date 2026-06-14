@@ -2,21 +2,27 @@
 import { Logo as A_Logo, Badge as A_Badge, Chip as A_Chip, Button as A_Button, Citation as A_Citation, PlanStep as A_PlanStep, Countdown as A_Countdown, SectionLabel as A_SectionLabel } from "./ui.jsx";
 import * as AD from "./data.js";
 import { ConversationsRail as A_Rail } from "./ConversationsRail.jsx";
+import { ReviewDetail } from "./KnowledgeBaseTab.jsx";
 import React, { useState as aUseState, useEffect as aUseEffect, useRef as aUseRef } from "react";
 
 const WF_LABEL = { list: "List", kanban: "Kanban", agile: "Sprint", timeline: "Timeline" };
 const railLS = () => { try { return localStorage.getItem("cci-rail") === "1"; } catch (e) { return false; } };
 
-function ReviewCard({ r, onAsk, onOpen, added, autoPilot, filed, onOpenDraft }) {
+function ReviewCard({ r, onAsk, onOpen, added, autoPilot, filed, onOpenDraft, onDelete }) {
+  const [open, setOpen] = aUseState(false);
   const tone = filed ? "var(--ok)" : r.priority === "urgent" ? "var(--urgent)" : r.priority === "warn" ? "var(--warn)" : "var(--text-muted)";
   return (
-    <div onClick={() => onOpen(r.id)} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${tone}`, borderRadius: "var(--radius)", padding: "10px 12px", cursor: "pointer", transition: "all var(--dur-fast)", opacity: filed ? 0.66 : 1, animation: added ? "ds-pulse 2s ease-out" : "none" }}
+    <div onClick={() => setOpen((o) => !o)} style={{ background: "var(--surface-2)", border: "1px solid var(--border)", borderLeft: `3px solid ${tone}`, borderRadius: "var(--radius)", padding: "10px 12px", cursor: "pointer", transition: "all var(--dur-fast)", opacity: filed ? 0.66 : 1, animation: added ? "ds-pulse 2s ease-out" : "none" }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.borderLeftColor = tone; e.currentTarget.style.background = "var(--surface-3)"; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.borderLeftColor = tone; e.currentTarget.style.background = "var(--surface-2)"; }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.vendor}</span>
         {r.source === "agent" && <span style={{ fontSize: 9, fontWeight: 700, color: "var(--accent)", background: "var(--accent-glow)", borderRadius: 4, padding: "1px 5px", flexShrink: 0 }}>✦ agent</span>}
-        <A_Badge status={filed ? "ok" : r.priority === "urgent" ? "urgent" : r.priority === "warn" ? "warn" : "muted"} style={{ marginLeft: "auto", flexShrink: 0 }}>{filed ? "✓ Notice filed" : r.label}</A_Badge>
+        <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+          <A_Badge status={filed ? "ok" : r.priority === "urgent" ? "urgent" : r.priority === "warn" ? "warn" : "muted"}>{filed ? "✓ Notice filed" : r.label}</A_Badge>
+          {onDelete && <button onClick={(e) => { e.stopPropagation(); onDelete(r.id); }} title="Remove from queue" style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 13, lineHeight: 1, padding: 0 }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "var(--urgent)")} onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}>✕</button>}
+        </span>
       </div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8 }}>
         <span style={{ fontSize: 10.5, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>{filed ? "filed by auto-pilot" : r.days < 0 ? "deadline passed" : "time to act"}</span>
@@ -32,6 +38,7 @@ function ReviewCard({ r, onAsk, onOpen, added, autoPilot, filed, onOpenDraft }) 
           )}
         </div>
       )}
+      {open && <ReviewDetail item={r} />}
     </div>
   );
 }
@@ -48,9 +55,9 @@ function ReviewGroup({ title, items, tone, addedId, cardProps }) {
   );
 }
 
-function ReviewSidebar({ items, workflow, alertMode, addedId, filedIds, onAsk, onOpen, onOpenSettings, onOpenDraft }) {
+function ReviewSidebar({ items, workflow, alertMode, addedId, filedIds, onAsk, onOpen, onOpenSettings, onOpenDraft, onDelete }) {
   const autoPilot = alertMode === "auto";
-  const cardProps = { onAsk, onOpen, onOpenDraft, autoPilot, filedIds };
+  const cardProps = { onAsk, onOpen, onOpenDraft, onDelete, autoPilot, filedIds };
   let body;
   if (workflow === "kanban") {
     body = (
@@ -148,7 +155,7 @@ function RecoBlock({ recos, isAdded, onAddReco, autoPilot }) {
   );
 }
 
-function ChatMessage({ m, isAdded, onAddReco, autoPilot }) {
+function ChatMessage({ m, isAdded, onAddReco, autoPilot, showRecos }) {
   if (m.role === "user") return (
     <div style={{ alignSelf: "flex-end", maxWidth: "82%", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>You</div>
@@ -162,7 +169,7 @@ function ChatMessage({ m, isAdded, onAddReco, autoPilot }) {
       </div>
       <div style={{ background: "var(--surface-3)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "12px 15px", fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--text-primary)" }}>{m.text}</div>
       {m.citations?.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{m.citations.map((c) => <A_Citation key={c}>{c}</A_Citation>)}</div>}
-      {m.recos?.length > 0 && <RecoBlock recos={m.recos} isAdded={isAdded} onAddReco={onAddReco} autoPilot={autoPilot} />}
+      {showRecos && m.recos?.length > 0 && <RecoBlock recos={m.recos} isAdded={isAdded} onAddReco={onAddReco} autoPilot={autoPilot} />}
       {m.queryPlan?.length > 0 && (
         <details style={{ marginTop: 2 }}>
           <summary style={{ fontSize: 10.5, color: "var(--text-muted)", cursor: "pointer", fontFamily: "var(--mono)", listStyle: "none" }}>▸ reasoning trace ({m.queryPlan.length} steps)</summary>
@@ -184,6 +191,8 @@ function AssistantTab({ conversations, chat, input, setInput, onSend, review, se
   const toggleRail = () => setRailCollapsed((v) => { const n = !v; try { localStorage.setItem("cci-rail", n ? "1" : "0"); } catch (e) {} return n; });
   const empty = messages.length === 0 && !loading;
   const autoPilot = settings.alertMode === "auto";
+  const showRecos = settings.alertMode !== "never";
+  const chatTitle = conversations.convos.find((c) => c.id === conversations.activeId)?.title || "Chat";
 
   return (
     <div style={{ display: "flex", flex: 1, minHeight: 0, position: "relative" }}>
@@ -195,7 +204,7 @@ function AssistantTab({ conversations, chat, input, setInput, onSend, review, se
           {(loading ? activePlan : []).length > 0 ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 6 }}>{activePlan.map((s, i) => <A_PlanStep key={i} index={i}>{s}</A_PlanStep>)}</div>
           ) : (
-            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Ask a question to see the agent decompose, retrieve from SharePoint, and cite its sources →</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)", marginTop: 4 }}>Ask a question to see the agent decompose, retrieve from the knowledge base, and cite its sources →</div>
           )}
         </div>
 
@@ -204,12 +213,12 @@ function AssistantTab({ conversations, chat, input, setInput, onSend, review, se
             <div style={{ margin: "auto", textAlign: "center", maxWidth: 520 }}>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 18 }}><A_Logo size={48} /></div>
               <h2 style={{ fontSize: 19, fontWeight: 600, color: "var(--text-primary)", marginBottom: 8, letterSpacing: "-0.01em" }}>Ask about your vendor contracts</h2>
-              <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>Every answer is grounded in the contract corpus on SharePoint and comes back with the exact source files and the agent's retrieval steps. Try “add that to my to-do list” after an answer.</p>
+              <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, margin: 0 }}>Every answer is grounded in the contract corpus and comes back with the exact source files and the agent's retrieval steps. Try “add that to my to-do list” after an answer.</p>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 7, justifyContent: "center", marginTop: 20 }}>{AD.QUERY_CHIPS.map((q) => <A_Chip key={q} onClick={() => onSend(q)}>{q}</A_Chip>)}</div>
             </div>
           ) : (
             <React.Fragment>
-              {messages.map((m) => <ChatMessage key={m.id} m={m} isAdded={review.hasItem} onAddReco={(r) => review.addItems([r])} autoPilot={autoPilot} />)}
+              {messages.map((m) => <ChatMessage key={m.id} m={m} isAdded={review.hasItem} onAddReco={(r) => review.addItems([r], { sourceChat: { id: conversations.activeId, title: chatTitle }, answerExcerpt: (m.text || "").slice(0, 220) })} autoPilot={autoPilot} showRecos={showRecos} />)}
               {loading && (
                 <div style={{ alignSelf: "flex-start", maxWidth: "88%", display: "flex", flexDirection: "column", gap: 6 }}>
                   <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>vendor-contract-assistant</div>
@@ -233,7 +242,7 @@ function AssistantTab({ conversations, chat, input, setInput, onSend, review, se
         </div>
       </div>
 
-      <ReviewSidebar items={review.items} workflow={settings.workflow} alertMode={settings.alertMode} addedId={review.addedId} filedIds={review.filedIds} onAsk={onSend} onOpen={() => {}} onOpenSettings={onOpenSettings} onOpenDraft={setDraftItem} />
+      <ReviewSidebar items={review.items} workflow={settings.workflow} alertMode={settings.alertMode} addedId={review.addedId} filedIds={review.filedIds} onAsk={onSend} onOpen={() => {}} onOpenSettings={onOpenSettings} onOpenDraft={setDraftItem} onDelete={review.removeItem} />
 
       <NoticeDraftModal item={draftItem} onApprove={(id) => { review.fileNotice(id); setDraftItem(null); }} onClose={() => setDraftItem(null)} />
     </div>

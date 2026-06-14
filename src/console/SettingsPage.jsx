@@ -116,8 +116,11 @@ function SettingsPage({ settings, memory }) {
         </SettingsCard>
 
         <SettingsCard label="Alerts">
-          <SettingRow title="Auto-pilot" desc={s.alertMode === "auto" ? "The agent drafts renewal notices and files them for your approval." : "You confirm every action before anything is filed."}>
-            <Segmented options={[{ id: "auto", label: "Auto" }, { id: "manual", label: "Manual" }]} value={s.alertMode} onChange={(v) => s.set({ alertMode: v })} />
+          <SettingRow title="Recommended actions" desc={
+            s.alertMode === "auto" ? "Automatic: the agent adds urgent actions to your queue and drafts notices — you still approve before anything is filed."
+            : s.alertMode === "never" ? "Never: the agent won't suggest actions. Answers only."
+            : "Manual: the agent suggests actions; you approve or deny each one. Nothing is added without you."}>
+            <Segmented options={[{ id: "auto", label: "Automatic" }, { id: "manual", label: "Manual" }, { id: "never", label: "Never" }]} value={s.alertMode} onChange={(v) => s.set({ alertMode: v })} />
           </SettingRow>
           <SettingRow title="Warn me before a deadline" desc="How far ahead a renewal starts surfacing in your review queue.">
             <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 200 }}>
@@ -126,8 +129,6 @@ function SettingsPage({ settings, memory }) {
             </div>
           </SettingRow>
         </SettingsCard>
-
-        {memory && <MemorySection memory={memory} />}
       </div>
     </div>
   );

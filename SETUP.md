@@ -40,6 +40,11 @@ Create these in the [Azure AI Foundry portal](https://ai.azure.com) and the
 > file — the indexer/retriever works best with separate documents, and each filename becomes the
 > citation the UI shows.
 
+> **Agent capabilities (optional tabs):** the **Documents → Open** viewer uses normal knowledge-base
+> retrieval (works with any grounded agent). The **Workbooks → "From the agent"** view downloads a
+> register file the agent writes via its **code-interpreter** tool — enable code interpreter on the
+> agent for that tab. Both degrade gracefully if unavailable.
+
 ---
 
 ## 2. Environment variables

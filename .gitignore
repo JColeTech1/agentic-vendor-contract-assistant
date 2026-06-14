@@ -17,6 +17,10 @@ probe_raw.json
 eval-agent.mjs
 eval-results.json
 server.log
+vite.log
+
+# ── Internal-only docs (not for the public repo) ──
+SCRIPT.md
 
 # ── Internal working docs — not for the public repo ──
 CLAUDE.md

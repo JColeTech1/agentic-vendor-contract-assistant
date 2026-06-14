@@ -57,4 +57,43 @@ export async function askContract(query, opts = {}) {
   }
 }
 
+// Fetch the agent-generated workbook files (real code-interpreter output files,
+// downloaded server-side). Returns { sheets: [{ filename, content }], live }.
+// Never throws — returns { sheets: [], live: false } when the proxy is offline.
+export async function fetchAgentWorkbook() {
+  try {
+    const res = await fetch(`${API_BASE}/api/workbook`, { method: "GET" });
+    if (!res.ok) return { sheets: [], live: false };
+    const data = await res.json();
+    if (data.error) return { sheets: [], live: false, error: data.error.message };
+    return { sheets: Array.isArray(data.sheets) ? data.sheets : [], live: true, note: data.note };
+  } catch {
+    return { sheets: [], live: false };
+  }
+}
+
+// Fetch one knowledge-base document's verbatim contents (agent-grounded).
+// Returns { file, content, live }; never throws.
+//
+// Lazy session cache: a document is fetched from the agent at most once per page
+// session, then served instantly on re-open (no extra agent calls / quota). Only
+// successful fetches are cached, so failures still retry. It holds only the docs
+// the user actually opened — it never preloads the whole corpus — so it scales to
+// a large SharePoint. Pass force=true (e.g. a Refresh button) to re-pull.
+const _docCache = new Map();
+export async function fetchDocument(file, force = false) {
+  if (!force && _docCache.has(file)) return _docCache.get(file);
+  try {
+    const res = await fetch(`${API_BASE}/api/document?file=${encodeURIComponent(file)}`, { method: "GET" });
+    if (!res.ok) return { file, content: "", live: false };
+    const data = await res.json();
+    if (data.error) return { file, content: "", live: false, error: data.error.message };
+    const result = { file, content: data.content || "", live: true };
+    if (result.content) _docCache.set(file, result); // cache only non-empty successes
+    return result;
+  } catch {
+    return { file, content: "", live: false };
+  }
+}
+
 export default askContract;

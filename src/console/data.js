@@ -93,6 +93,8 @@ function reviewItemFromContract(id, opts = {}) {
     label: opts.label || st.label,
     deadline, days: daysUntil(deadline),
     source: opts.source || "auto",
+    sourceChat: opts.sourceChat || null,   // { id, title } of the chat that added it
+    answerExcerpt: opts.answerExcerpt || null,
     question: `What are the exact cancellation and renewal terms for the ${c.vendor} contract, and what is the deadline to act?`,
   };
 }

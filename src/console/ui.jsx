@@ -5,7 +5,7 @@
 import React, { useState, useEffect, useRef } from "react";
 
 // ───────── Logo ─────────
-function Logo({ size = 30, withWordmark = false, title = "Contoso Contract Intelligence", subtitle = "Compliance & contract intelligence · grounded on SharePoint" }) {
+function Logo({ size = 30, withWordmark = false, title = "Contoso Contract Intelligence", subtitle = "Compliance & contract intelligence · grounded on the contract corpus" }) {
   const mark = (
     <div style={{ width: size, height: size, borderRadius: size <= 32 ? 8 : 10, background: "linear-gradient(135deg, var(--accent), var(--accent-hover))", display: "grid", placeItems: "center", color: "#fff", fontSize: Math.round(size * 0.53), boxShadow: "0 0 16px var(--accent-glow)", flexShrink: 0 }}>◈</div>
   );

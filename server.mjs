@@ -109,22 +109,49 @@ function parseAgentResponse(raw) {
     const msg = output.find((o) => o?.type === "message" && o?.role === "assistant");
     answer = msg?.content?.find((c) => c?.type === "output_text")?.text ?? "";
   }
-  const answerClean = answer.replace(/【[^】]*】/g, "").replace(/[ \t]+\n/g, "\n").trim();
+  // Passthrough: return the agent's message EXACTLY as written (including its own
+  // Source line and any inline markers). No stripping, no trimming, no summarizing.
 
-  // ---- citations (from url_citation annotations) ----
+  // ---- citations ----
+  // A contract tool must always cite. The agent annotates inconsistently, so we
+  // derive citations from what it actually retrieved (the mcp_call output), in
+  // this order of preference: explicit annotations -> inline 【i:N†source】 markers
+  // mapped to the retrieved docs -> retrieved docs whose subject appears in the
+  // answer -> the single top-ranked retrieved doc. Never leave a grounded answer uncited.
   const citations = [];
   const seen = new Set();
+  const add = (name) => { if (name && !seen.has(name)) { seen.add(name); citations.push(name); } };
+
+  // (a) explicit url_citation annotations, when present
   for (const o of output) {
     if (o?.type !== "message") continue;
-    for (const c of o.content || []) {
-      for (const a of c.annotations || []) {
-        const name = fileNameFromUrl(a?.url || a?.title || "");
-        if (name && !seen.has(name)) { seen.add(name); citations.push(name); }
-      }
-    }
+    for (const c of o.content || [])
+      for (const a of c.annotations || [])
+        if (a?.type !== "container_file_citation") add(fileNameFromUrl(a?.url || a?.title || ""));
   }
 
-  // ---- query plan (the actual retrieval the agent performed) ----
+  // (b) the documents actually retrieved, in rank order (source of truth)
+  const retrieved = [];
+  for (const o of output) {
+    if (o?.type !== "mcp_call") continue;
+    const outp = typeof o.output === "string" ? o.output : JSON.stringify(o.output || "");
+    for (const m of outp.matchAll(/"blob_url":\s*"([^"]+)"/g)) retrieved.push(fileNameFromUrl(m[1]));
+  }
+
+  // (c) map the answer's 【i:N†source】 markers to retrieved[N]
+  for (const m of (answer || "").matchAll(/【\d+:(\d+)†[^】]*】/g)) add(retrieved[Number(m[1])]);
+
+  // (d) fallback: retrieved docs whose subject appears in the answer, else top hit
+  if (!citations.length && retrieved.length) {
+    const lower = (answer || "").toLowerCase();
+    const slug = (f) => f.replace(/\.[^.]+$/, "").split(/[-_]/)[0].toLowerCase();
+    const matched = retrieved.filter((f) => { const s = slug(f); return s.length > 3 && lower.includes(s); });
+    (matched.length ? matched : [retrieved[0]]).forEach(add);
+  }
+
+  // ---- query plan (reflects the tools the agent ACTUALLY used) ----
+  // knowledge_base_retrieve (RAG) and/or code_interpreter — never claim retrieval
+  // that didn't happen.
   const queryPlan = [];
   for (const o of output) {
     if (o?.type !== "mcp_call") continue;
@@ -134,14 +161,83 @@ function parseAgentResponse(raw) {
     const m = String(o.output || "").match(/Retrieved\s+(\d+)\s+documents/i);
     if (m) queryPlan.push(`Ranked ${m[1]} matching contract passages`);
   }
-  if (queryPlan.length) queryPlan.push("Synthesized a grounded answer with citations");
-  else queryPlan.push(
-    "Decomposed the question",
-    "Retrieved matching passages from the knowledge base",
-    "Synthesized a grounded answer with citations"
-  );
+  // Code interpreter: name the file(s) it actually read, rather than assuming a
+  // source (we have more than one). Strip the internal "assistant-<id>-" prefix.
+  const ciFiles = new Set();
+  for (const o of output) {
+    if (o?.type !== "code_interpreter_call") continue;
+    const code = String(o.code ?? o.input ?? "");
+    for (const m of code.matchAll(/[\w.-]+\.(?:csv|xlsx?|json|md|txt|parquet)/gi)) {
+      ciFiles.add(m[0].replace(/^assistant-[A-Za-z0-9]+-/, ""));
+    }
+  }
+  if (output.some((o) => o?.type === "code_interpreter_call")) {
+    if (!queryPlan.length) queryPlan.push("Decomposed the question");
+    queryPlan.push(ciFiles.size
+      ? `Computed the answer with the code interpreter over ${[...ciFiles].join(", ")}`
+      : "Computed the answer with the code interpreter");
+  }
+  if (queryPlan.length) queryPlan.push("Synthesized a grounded answer");
+  else queryPlan.push("Decomposed the question", "Answered from the agent's knowledge");
 
-  return { answer: answerClean || "(no answer text returned)", citations, queryPlan };
+  // Last resort: if nothing else cited, cite the file(s) the code interpreter read
+  // (e.g. the register), so every grounded answer carries a source — like Foundry's.
+  if (!citations.length) for (const f of ciFiles) add(f);
+
+  return { answer: answer || "(no answer text returned)", citations, queryPlan };
+}
+
+// Pull code-interpreter-generated file references from the response — these are
+// the actual files the agent wrote (e.g. extracted_register.csv), exposed as
+// container_file_citation annotations: { container_id, file_id, filename }.
+function extractContainerFiles(raw) {
+  const output = Array.isArray(raw?.output) ? raw.output : [];
+  const files = [];
+  const seen = new Set();
+  for (const o of output) {
+    if (o?.type !== "message") continue;
+    for (const c of o.content || []) {
+      for (const a of c.annotations || []) {
+        if (a?.type !== "container_file_citation") continue;
+        if (!a.file_id || !a.container_id || seen.has(a.file_id)) continue;
+        seen.add(a.file_id);
+        files.push({ filename: a.filename || a.file_id, container_id: a.container_id, file_id: a.file_id });
+      }
+    }
+  }
+  return files;
+}
+
+// Last-resort: pull a CSV out of the answer text if the agent printed it inline
+// instead of writing a file (it's non-deterministic). Looks for a fenced block
+// first, else the longest run of comma-bearing lines.
+function csvFromText(text) {
+  const fenced = String(text).match(/```(?:csv)?\s*([\s\S]*?)```/i);
+  if (fenced && fenced[1].includes(",")) return fenced[1].trim();
+  const lines = String(text).split("\n").filter((l) => l.includes(","));
+  return lines.length >= 2 ? lines.join("\n").trim() : "";
+}
+
+// Reconstruct a document's verbatim text from the retrieval output — the stored
+// snippets (blob_url + snippet) are the actual KB document chunks. More reliable
+// than asking the agent to "print the file".
+function docFromRetrieval(raw, file) {
+  const out = Array.isArray(raw?.output) ? raw.output : [];
+  const parts = [];
+  const seen = new Set();
+  for (const o of out) {
+    if (o?.type !== "mcp_call") continue;
+    const s = typeof o.output === "string" ? o.output : JSON.stringify(o.output || "");
+    const re = /"blob_url":\s*"([^"]+)"[\s\S]*?"snippet":\s*"((?:[^"\\]|\\.)*)"/g;
+    let m;
+    while ((m = re.exec(s))) {
+      if (fileNameFromUrl(m[1]) !== file) continue;
+      let text = ""; try { text = JSON.parse('"' + m[2] + '"'); } catch { text = m[2]; }
+      const key = text.slice(0, 80);
+      if (text && !seen.has(key)) { seen.add(key); parts.push(text); }
+    }
+  }
+  return parts.join("\n\n");
 }
 
 // ---- CLI probe: node --env-file=.env.local server.mjs --probe "question" ----
@@ -179,6 +275,56 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "GET" && req.url === "/api/health") {
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify({ status: "ok", agent: `${agentName} v${agentVersion}` }));
+      return;
+    }
+    if (req.method === "GET" && req.url === "/api/workbook") {
+      const prompt =
+        "Using your code-interpreter tool, write the current contract register to a CSV file " +
+        "(one row per contract, with a header row) and return it as a downloadable file.";
+      try {
+        const r = await runAgentWithRetry(prompt);
+        const refs = extractContainerFiles(r);
+        const sheets = [];
+        const oai = projectClient.getOpenAIClient();
+        for (const ref of refs) {
+          try {
+            const resp = await oai.containers.files.content.retrieve(ref.file_id, { container_id: ref.container_id });
+            const content = await resp.text();
+            if (content && content.trim()) sheets.push({ filename: ref.filename, content });
+          } catch (e) {
+            console.error(`[workbook] download failed for ${ref.filename}: ${e?.message}`);
+          }
+        }
+        // Fallback: agent answered inline instead of writing a file.
+        if (!sheets.length) {
+          const inline = csvFromText(parseAgentResponse(r).answer);
+          if (inline) sheets.push({ filename: "contract-register.csv", content: inline });
+        }
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ sheets, note: sheets.length ? undefined : "The agent did not return a file this time — try Refresh." }));
+        console.log(`[ok]  /api/workbook  (${sheets.length} sheet(s))`);
+      } catch (e) {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ sheets: [], error: describeError(e) }));
+        console.error(`[ERR] /api/workbook -> ${e?.message}`);
+      }
+      return;
+    }
+    if (req.method === "GET" && req.url.startsWith("/api/document")) {
+      const file = (new URL(req.url, "http://localhost").searchParams.get("file") || "").trim();
+      if (!file) { res.writeHead(400, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: { message: "no file" } })); return; }
+      const prompt = `What does the contract in the file "${file}" say? Summarize its key terms, clauses, dates, and obligations.`;
+      try {
+        const r = await runAgentWithRetry(prompt);
+        const content = docFromRetrieval(r, file) || parseAgentResponse(r).answer;
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ file, content }));
+        console.log(`[ok]  /api/document ${file} (${content.length} chars)`);
+      } catch (e) {
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ file, content: "", error: describeError(e) }));
+        console.error(`[ERR] /api/document ${file} -> ${e?.message}`);
+      }
       return;
     }
     if (req.method === "POST" && req.url === "/api/ask") {
