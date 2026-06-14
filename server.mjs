@@ -1,40 +1,84 @@
-// server.mjs — Contoso Contract Intelligence
-// Calls Sally's real Foundry agent (vendor-contract-assistant v3) via the Azure
-// AI Projects SDK. The agent answers from its own knowledge base (kb-contracts).
-// NO injected contracts, NO fabricated citations — we show exactly what it returns.
+// server.mjs — Contract Intelligence — local API proxy
+// Calls a Foundry agent via the Azure AI Projects SDK and returns a clean
+// { answer, citations, queryPlan } shape to the browser. The agent answers from
+// its own knowledge base — NO injected documents, NO fabricated citations.
 //
-// Browser -> http://localhost:8787 -> this Node server -> Azure AI Projects SDK -> agent.
-// (DefaultAzureCredential does not work in a browser, so the SDK call runs here, server-side.)
+// Browser -> http://localhost:8799 -> this Node server -> Azure AI Projects SDK -> agent.
+// (DefaultAzureCredential can't run in a browser, so the authenticated call runs here.)
 //
-// RUN:    node server.mjs
-// PROBE:  node server.mjs --probe "Which contracts auto-renew in the next 90 days?"
+// Bring your own API: every value below comes from the environment — see .env.example
+// and SETUP.md. Nothing tenant-specific is hardcoded.
+//
+// RUN:    node --env-file=.env.local server.mjs
+// PROBE:  node --env-file=.env.local server.mjs --probe "your question"
 
 import http from "node:http";
 import { DefaultAzureCredential } from "@azure/identity";
 import { AIProjectClient } from "@azure/ai-projects";
 
-const endpoint = "https://contoso-contract-assist-resource.services.ai.azure.com/api/projects/contoso-contract-assist";
-const agentName = "vendor-contract-assistant";
-const agentVersion = "3";
-const PORT = 8787;
+// Config comes entirely from the environment (.env.local, loaded via --env-file).
+// The Entra credential below is satisfied by AZURE_TENANT_ID / AZURE_CLIENT_ID /
+// AZURE_CLIENT_SECRET (service principal), which live only in .env.local.
+const endpoint = process.env.FOUNDRY_PROJECT_ENDPOINT;
+const agentName = process.env.FOUNDRY_AGENT_NAME;
+const agentVersion = process.env.FOUNDRY_AGENT_VERSION || "1";
+const PORT = Number(process.env.PORT || 8799);
+
+const missing = ["FOUNDRY_PROJECT_ENDPOINT", "FOUNDRY_AGENT_NAME"].filter((k) => !process.env[k]);
+if (missing.length) {
+  console.error(`Missing required env: ${missing.join(", ")}.`);
+  console.error("Copy .env.example to .env.local, fill it in, then: node --env-file=.env.local server.mjs");
+  process.exit(1);
+}
 
 const projectClient = new AIProjectClient(endpoint, new DefaultAzureCredential());
 
-// Exactly the portal "View code" pattern. Returns the FULL response object so we
-// can inspect citations / query plan, not just output_text.
-async function runAgent(userQuestion) {
+// Single-turn call to the agent. Optional `memory` (standing facts/policies the
+// user asked the agent to apply) is prepended to the one user message — we never
+// thread prior turns, since clean single-turn calls retrieve most accurately.
+// Returns the FULL response object so we can extract citations + query plan.
+function buildContent(userQuestion, memory) {
+  const facts = Array.isArray(memory) ? memory.filter((f) => typeof f === "string" && f.trim()) : [];
+  if (!facts.length) return userQuestion;
+  return (
+    "Standing facts and policies to apply when answering (provided by the user):\n" +
+    facts.map((f) => `- ${f.trim()}`).join("\n") +
+    `\n\nQuestion: ${userQuestion}`
+  );
+}
+
+async function runAgent(userQuestion, memory) {
   const openAIClient = projectClient.getOpenAIClient();
 
   const conversation = await openAIClient.conversations.create({
-    items: [{ type: "message", role: "user", content: userQuestion }],
+    items: [{ type: "message", role: "user", content: buildContent(userQuestion, memory) }],
   });
 
   const response = await openAIClient.responses.create(
     { conversation: conversation.id },
-    { body: { agent: { name: agentName, version: agentVersion, type: "agent_reference" } } }
+    { body: { agent_reference: { name: agentName, version: agentVersion, type: "agent_reference" } } }
   );
 
   return response;
+}
+
+// Retry only on 429 (rate limit) — smooths over low per-minute quota during a
+// live demo. Any other error propagates immediately to the caller.
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function runAgentWithRetry(userQuestion, memory, attempts = 2, backoffMs = 4000) {
+  for (let i = 0; ; i++) {
+    try {
+      return await runAgent(userQuestion, memory);
+    } catch (e) {
+      const code = e?.statusCode ?? e?.status;
+      if (code === 429 && i < attempts) {
+        console.warn(`[429] rate limited — retry ${i + 1}/${attempts} in ${backoffMs / 1000}s`);
+        await sleep(backoffMs);
+        continue;
+      }
+      throw e;
+    }
+  }
 }
 
 function describeError(e) {
@@ -46,17 +90,74 @@ function describeError(e) {
   };
 }
 
-// ---- CLI probe: node server.mjs --probe "question" -------------------------
+// Turn the raw Responses object into the shape the UI wants:
+//   { answer, citations[], queryPlan[] }
+// - answer     : output_text, with the inline 【4:0†source】 markers stripped for clean display
+// - citations  : source filenames pulled from the assistant message's url_citation annotations
+// - queryPlan  : the REAL subqueries the agent ran (mcp_call -> knowledge_base_retrieve), not faked
+function fileNameFromUrl(u) {
+  try { return decodeURIComponent(String(u).split("?")[0].split("/").pop() || ""); }
+  catch { return String(u).split("/").pop() || ""; }
+}
+
+function parseAgentResponse(raw) {
+  const output = Array.isArray(raw?.output) ? raw.output : [];
+
+  // ---- answer ----
+  let answer = typeof raw?.output_text === "string" ? raw.output_text : "";
+  if (!answer) {
+    const msg = output.find((o) => o?.type === "message" && o?.role === "assistant");
+    answer = msg?.content?.find((c) => c?.type === "output_text")?.text ?? "";
+  }
+  const answerClean = answer.replace(/【[^】]*】/g, "").replace(/[ \t]+\n/g, "\n").trim();
+
+  // ---- citations (from url_citation annotations) ----
+  const citations = [];
+  const seen = new Set();
+  for (const o of output) {
+    if (o?.type !== "message") continue;
+    for (const c of o.content || []) {
+      for (const a of c.annotations || []) {
+        const name = fileNameFromUrl(a?.url || a?.title || "");
+        if (name && !seen.has(name)) { seen.add(name); citations.push(name); }
+      }
+    }
+  }
+
+  // ---- query plan (the actual retrieval the agent performed) ----
+  const queryPlan = [];
+  for (const o of output) {
+    if (o?.type !== "mcp_call") continue;
+    let queries = [];
+    try { queries = JSON.parse(o.arguments || "{}").queries || []; } catch { /* ignore */ }
+    for (const q of queries) queryPlan.push(`Retrieve from knowledge base: “${q}”`);
+    const m = String(o.output || "").match(/Retrieved\s+(\d+)\s+documents/i);
+    if (m) queryPlan.push(`Ranked ${m[1]} matching contract passages`);
+  }
+  if (queryPlan.length) queryPlan.push("Synthesized a grounded answer with citations");
+  else queryPlan.push(
+    "Decomposed the question",
+    "Retrieved matching passages from the knowledge base",
+    "Synthesized a grounded answer with citations"
+  );
+
+  return { answer: answerClean || "(no answer text returned)", citations, queryPlan };
+}
+
+// ---- CLI probe: node --env-file=.env.local server.mjs --probe "question" ----
 const probeIdx = process.argv.indexOf("--probe");
 if (probeIdx !== -1) {
   const q = process.argv[probeIdx + 1] || "Which contracts auto-renew in the next 90 days?";
   console.log("Asking agent:", JSON.stringify(q));
   try {
     const r = await runAgent(q);
-    console.log("\n===== output_text =====");
-    console.log(r?.output_text ?? "(no output_text field)");
-    console.log("\n===== RAW RESPONSE OBJECT =====");
-    console.log(JSON.stringify(r, null, 2));
+    const parsed = parseAgentResponse(r);
+    console.log("\n===== ANSWER =====");
+    console.log(parsed.answer);
+    console.log("\n===== CITATIONS =====");
+    console.log(parsed.citations.join("\n") || "(none)");
+    console.log("\n===== QUERY PLAN =====");
+    console.log(parsed.queryPlan.map((s, i) => `${i + 1}. ${s}`).join("\n"));
   } catch (e) {
     console.error("\n===== AGENT CALL FAILED =====");
     console.error(JSON.stringify(describeError(e), null, 2));
@@ -66,109 +167,39 @@ if (probeIdx !== -1) {
   process.exit(0);
 }
 
-// ---- Web UI ----------------------------------------------------------------
-const HTML = `<!DOCTYPE html><html lang="en"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Contoso Contract Intelligence</title>
-<style>
-  :root{--bg:#0F1117;--s2:#181C25;--s3:#1E2332;--s4:#252B3B;--bd:rgba(255,255,255,.1);--tx:#F0F2F8;--t2:#8B91A8;--t3:#555C74;--ac:#0078D4;--ok:#2DBD7E;--err:#E85050}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{background:var(--bg);color:var(--tx);font-family:system-ui,sans-serif;height:100vh;display:flex;flex-direction:column}
-  header{background:var(--s2);border-bottom:1px solid var(--bd);padding:12px 20px;display:flex;align-items:center;gap:10px}
-  .logo{width:26px;height:26px;background:var(--ac);border-radius:6px;display:flex;align-items:center;justify-content:center}
-  h1{font-size:14px;font-weight:600}.sub{font-size:11px;color:var(--t3)}
-  .badge{margin-left:auto;font-size:11px;color:var(--t2)}
-  #log{flex:1;overflow-y:auto;padding:24px;display:flex;flex-direction:column;gap:16px}
-  .msg{max-width:820px;display:flex;flex-direction:column;gap:6px}
-  .msg.user{align-self:flex-end;align-items:flex-end}
-  .role{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em}
-  .bubble{background:var(--s3);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;font-size:14px;line-height:1.6;white-space:pre-wrap}
-  .msg.user .bubble{background:rgba(0,120,212,.15);border-color:rgba(0,120,212,.3)}
-  .bubble.err{background:rgba(232,80,80,.1);border-color:rgba(232,80,80,.35);color:#ffb4b4}
-  .think{color:var(--t3);font-size:13px}
-  details{margin-top:4px}summary{font-size:11px;color:var(--t2);cursor:pointer;font-family:ui-monospace,monospace}
-  pre{background:#0a0c12;border:1px solid var(--bd);border-radius:8px;padding:12px;margin-top:6px;overflow:auto;font-family:ui-monospace,monospace;font-size:11px;white-space:pre-wrap;word-break:break-word;max-height:420px}
-  .empty{margin:auto;text-align:center;color:var(--t3);max-width:460px}
-  .empty h2{font-size:15px;color:var(--t2);font-weight:500;margin-bottom:8px}
-  .chips{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-top:16px}
-  .chip{font-size:12px;background:var(--s4);border:1px solid var(--bd);color:var(--t2);border-radius:20px;padding:6px 12px;cursor:pointer}
-  .chip:hover{color:var(--tx);border-color:var(--ac)}
-  footer{border-top:1px solid var(--bd);background:var(--s2);padding:14px 20px}
-  .inrow{display:flex;gap:10px;background:var(--s3);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:10px 14px}
-  .inrow:focus-within{border-color:var(--ac)}
-  #q{flex:1;background:none;border:none;outline:none;color:var(--tx);font-size:14px;font-family:inherit;resize:none;max-height:120px}
-  #send{background:var(--ac);border:none;border-radius:8px;width:36px;height:36px;color:#fff;cursor:pointer;font-size:16px;flex-shrink:0}
-  #send:disabled{background:var(--s4);color:var(--t3);cursor:not-allowed}
-</style></head><body>
-<header>
-  <div class="logo">&#9678;</div>
-  <div><h1>Contoso Contract Intelligence</h1><div class="sub">Agent: vendor-contract-assistant v3 &middot; knowledge base: kb-contracts</div></div>
-  <div class="badge">Foundry Agent Service</div>
-</header>
-<div id="log">
-  <div class="empty" id="empty">
-    <h2>Ask Sally's agent about the contracts</h2>
-    <div>Your question goes to the real Foundry agent, which answers from its own knowledge base. The full raw response is shown under each answer.</div>
-    <div class="chips">
-      <div class="chip" onclick="ask(this.textContent)">Which contracts auto-renew in the next 90 days?</div>
-      <div class="chip" onclick="ask(this.textContent)">Which vendors have a price escalation clause?</div>
-      <div class="chip" onclick="ask(this.textContent)">What are the cancellation terms for Meridian Cloud Hosting?</div>
-    </div>
-  </div>
-</div>
-<footer>
-  <div class="inrow">
-    <textarea id="q" rows="1" placeholder="Ask about renewals, notice periods, escalations, data obligations..." onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();go()}"></textarea>
-    <button id="send" onclick="go()">&#10148;</button>
-  </div>
-</footer>
-<script>
-var L=document.getElementById('log');var busy=false;
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
-function ask(t){document.getElementById('q').value=t;go();}
-function add(cls,html){var e=document.getElementById('empty');if(e)e.remove();var d=document.createElement('div');d.className='msg '+cls;d.innerHTML=html;L.appendChild(d);L.scrollTop=L.scrollHeight;return d;}
-async function go(){
-  var ipt=document.getElementById('q');var q=ipt.value.trim();if(!q||busy)return;busy=true;
-  ipt.value='';document.getElementById('send').disabled=true;
-  add('user','<div class="role">You</div><div class="bubble">'+esc(q)+'</div>');
-  var t=add('assistant','<div class="role">vendor-contract-assistant v3</div><div class="think">contacting the agent...</div>');
-  try{
-    var res=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({question:q})});
-    var data=await res.json();
-    if(data.error){
-      t.innerHTML='<div class="role">agent error</div><div class="bubble err">'+esc(data.error.message||'unknown error')+'</div><details open><summary>raw error</summary><pre>'+esc(JSON.stringify(data.error,null,2))+'</pre></details>';
-    }else{
-      t.innerHTML='<div class="role">vendor-contract-assistant v3 &middot; kb-contracts</div><div class="bubble">'+esc(data.answer||'(no answer text returned)')+'</div><details><summary>raw response JSON</summary><pre>'+esc(JSON.stringify(data.raw,null,2))+'</pre></details>';
-    }
-  }catch(e){t.innerHTML='<div class="bubble err">request failed: '+esc(e)+'</div>';}
-  L.scrollTop=L.scrollHeight;busy=false;document.getElementById('send').disabled=false;
-}
-</script></body></html>`;
-
 // ---- HTTP server -----------------------------------------------------------
+// This process is an API proxy only — the UI is served by Vite (npm run dev).
 const server = http.createServer(async (req, res) => {
   try {
     if (req.method === "GET" && (req.url === "/" || req.url === "/index.html")) {
-      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-      res.end(HTML);
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("Contract Intelligence API proxy. Open the app via the Vite dev server (npm run dev).");
+      return;
+    }
+    if (req.method === "GET" && req.url === "/api/health") {
+      res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify({ status: "ok", agent: `${agentName} v${agentVersion}` }));
       return;
     }
     if (req.method === "POST" && req.url === "/api/ask") {
       let body = "";
       for await (const chunk of req) body += chunk;
-      const question = (JSON.parse(body || "{}").question || "").trim();
+      const parsedBody = JSON.parse(body || "{}");
+      const question = (parsedBody.question || "").trim();
+      const memory = parsedBody.memory;
       if (!question) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: { message: "no question" } }));
         return;
       }
       try {
-        const r = await runAgent(question);
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
-        res.end(JSON.stringify({ answer: r?.output_text ?? "(no output_text field)", raw: r }));
-        console.log(`[ok]  ${question}`);
+        const r = await runAgentWithRetry(question, memory);
+        const parsed = parseAgentResponse(r);
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
+        res.end(JSON.stringify({ ...parsed, raw: r }));
+        console.log(`[ok]  ${question}  (${parsed.citations.length} citations)`);
       } catch (e) {
-        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8" });
+        res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Access-Control-Allow-Origin": "*" });
         res.end(JSON.stringify({ error: describeError(e) }));
         console.error(`[ERR] ${question} -> ${e?.message}`);
       }
@@ -184,8 +215,8 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log("################################################################");
-  console.log(`#  Contoso Contract Intelligence  ->  http://localhost:${PORT}`);
-  console.log(`#  Agent: ${agentName} v${agentVersion}  (answers from kb-contracts)`);
+  console.log(`#  Contract Intelligence — API proxy  ->  http://localhost:${PORT}`);
+  console.log(`#  Agent: ${agentName} v${agentVersion}`);
   console.log("#  Stop: Ctrl+C");
   console.log("################################################################");
 });

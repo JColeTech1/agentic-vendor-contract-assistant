@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Contoso Contract Intelligence</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { height: 100%; }
+  body { background: var(--surface); color: var(--text-primary); font-family: var(--font); font-size: 14px; line-height: 1.5; -webkit-font-smoothing: antialiased; }
+  button { font-family: inherit; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: var(--surface-4); border-radius: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @keyframes ds-slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+  @keyframes ds-pulse { 0% { box-shadow: 0 0 0 0 var(--accent-glow); } 60% { box-shadow: 0 0 0 5px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
+  .cci-typing { display: inline-flex; gap: 4px; align-items: center; }
+  .cci-typing span { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); animation: cci-blink 1.2s infinite; }
+  .cci-typing span:nth-child(2) { animation-delay: .2s; }
+  .cci-typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes cci-blink { 0%,80%,100% { opacity: .25; } 40% { opacity: 1; } }
+  .cci-input:focus-within { border-color: var(--accent) !important; box-shadow: var(--ring-focus); }
+  details > summary::-webkit-details-marker { display: none; }
+</style>
+<script>
+  /* Apply saved theme before first paint to avoid a flash. Default: dark (product signature). */
+  try {
+    var st = JSON.parse(localStorage.getItem('cci-settings') || '{}');
+    document.documentElement.setAttribute('data-theme', st.theme || 'dark');
+    if (st.cb) document.documentElement.setAttribute('data-cb', 'on');
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/console/main.jsx"></script>
+</body>
+</html>

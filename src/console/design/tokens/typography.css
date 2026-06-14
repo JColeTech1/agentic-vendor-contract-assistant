@@ -1,0 +1,41 @@
+/* ───────── Typography tokens ─────────
+   Two families. Inter carries everything in the product UI; JetBrains Mono
+   is reserved for machine output — citation filenames, reasoning-trace
+   steps, and connection diagnostics. The scale is small and dense: this is
+   an information-rich operator console, not a marketing page.            */
+
+:root {
+  /* Families */
+  --font:        'Inter', system-ui, -apple-system, sans-serif;
+  --mono:        'JetBrains Mono', ui-monospace, 'SF Mono', monospace; /* @kind font */
+  --font-sans:   var(--font);
+  --font-mono:   var(--mono);
+
+  /* Size scale (px) — UI runs small & dense */
+  --text-stat:   22px;  /* headline stat numbers */
+  --text-h1:     15px;  /* product title */
+  --text-h2:     16px;  /* empty-state heading */
+  --text-body:   14px;  /* base body */
+  --text-bubble: 13.5px;/* chat bubbles, vendor names */
+  --text-meta:   12px;  /* metadata rows */
+  --text-sm:     11.5px;
+  --text-label:  11px;  /* uppercase section labels */
+  --text-mono:   10.5px;/* citations, trace */
+  --text-xs:     10px;  /* badges / pills */
+
+  /* Weights */
+  --weight-regular:  400;
+  --weight-medium:   500;
+  --weight-semibold: 600;
+  --weight-bold:     700;
+
+  /* Line heights */
+  --leading-tight: 1.4;
+  --leading-base:  1.5;
+  --leading-relaxed: 1.6;
+
+  /* Tracking */
+  --tracking-label:  0.08em;  /* uppercase eyebrows */
+  --tracking-tight: -0.01em;  /* titles */
+  --tracking-stat:  -0.02em;  /* big numbers */
+}

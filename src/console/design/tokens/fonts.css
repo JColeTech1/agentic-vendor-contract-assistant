@@ -1,0 +1,8 @@
+/* ───────── Webfonts ─────────
+   Contoso Contract Intelligence ships two Google-hosted families:
+   • Inter           — UI / product type (400/500/600/700)
+   • JetBrains Mono  — citations, reasoning-trace steps, code (400/500)
+   The original app loads these from Google Fonts; we preserve that source.
+   Importing this file pulls the @font-face declarations Google serves. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');

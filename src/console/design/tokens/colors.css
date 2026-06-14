@@ -1,0 +1,112 @@
+/* ───────── Color tokens ─────────
+   Contoso Contract Intelligence is a dark-only enterprise surface.
+   The palette is built from four stacked surface levels, a single Azure
+   accent (Microsoft Foundry lineage), and three semantic states that each
+   carry a matching ~10%-alpha background tint for soft fills.            */
+
+:root {
+  /* Surfaces — deepest (app bg) to highest (raised controls) */
+  --surface:        #0F1117;
+  --surface-2:      #181C25;
+  --surface-3:      #1E2332;
+  --surface-4:      #252B3B;
+
+  /* Hairline borders over dark surfaces */
+  --border:         rgba(255, 255, 255, 0.08);
+  --border-strong:  rgba(255, 255, 255, 0.14);
+
+  /* Text */
+  --text-primary:   #F0F2F8;
+  --text-secondary: #8B91A8;
+  --text-muted:     #555C74;
+
+  /* Accent — Azure / Foundry blue */
+  --accent:         #0078D4;
+  --accent-hover:   #4AA3E0;
+  --accent-glow:    rgba(0, 120, 212, 0.18);
+
+  /* Semantic — urgent (red) */
+  --urgent:         #E85050;
+  --urgent-bg:      rgba(232, 80, 80, 0.10);
+  --urgent-border:  rgba(232, 80, 80, 0.35);
+
+  /* Semantic — warning (amber) */
+  --warn:           #F0A500;
+  --warn-bg:        rgba(240, 165, 0, 0.10);
+
+  /* Semantic — ok / success (green) */
+  --ok:             #2DBD7E;
+  --ok-bg:          rgba(45, 189, 126, 0.10);
+  --ok-border:      rgba(45, 189, 126, 0.25);
+
+  /* ── Semantic aliases (use these in components) ── */
+  --app-bg:           var(--surface);
+  --surface-card:     var(--surface-2);
+  --surface-raised:   var(--surface-3);
+  --surface-control:  var(--surface-4);
+
+  --text-body:        var(--text-primary);
+  --text-meta:        var(--text-secondary);
+  --text-faint:       var(--text-muted);
+
+  --focus-ring:       var(--accent-glow);
+  --citation-fg:      var(--ok);
+  --citation-bg:      var(--ok-bg);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   LIGHT MODE — set data-theme="light" on <html>.
+   Cool, clean whites & blue-greys (deliberately NOT beige/cream). App
+   bg is a light cool grey; cards are pure white and read as elevated.
+   ═══════════════════════════════════════════════════════════════════ */
+:root[data-theme="light"] {
+  --surface:        #EDF0F5;  /* app bg — cool light grey */
+  --surface-2:      #FFFFFF;  /* cards — white, elevated */
+  --surface-3:      #F4F6FA;  /* raised / hover */
+  --surface-4:      #E3E8F0;  /* controls / chips */
+
+  --border:         rgba(20, 26, 42, 0.10);
+  --border-strong:  rgba(20, 26, 42, 0.18);
+
+  --text-primary:   #161A23;
+  --text-secondary: #515A6E;
+  --text-muted:     #8A93A6;
+
+  --accent:         #0F6CBD;  /* slightly deeper than dark-mode Azure for AA on white */
+  --accent-hover:   #0A5AA0;
+  --accent-glow:    rgba(15, 108, 189, 0.16);
+
+  --urgent:         #C5372E;
+  --urgent-bg:      rgba(197, 55, 46, 0.10);
+  --urgent-border:  rgba(197, 55, 46, 0.30);
+
+  --warn:           #B05A00;
+  --warn-bg:        rgba(176, 90, 0, 0.12);
+
+  --ok:             #0E7C42;
+  --ok-bg:          rgba(14, 124, 66, 0.12);
+  --ok-border:      rgba(14, 124, 66, 0.28);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   COLOR-BLIND-SAFE SEMANTICS — set data-cb="on" on <html>.
+   Composes with EITHER theme. Replaces the red/amber/green triage ramp
+   (the classic red-green confusion) with magenta / orange / teal, which
+   stay distinct across protan, deutan & tritan vision. Brand accent
+   (blue) is left intact. Tints are derived with color-mix so they work
+   on light or dark surfaces.
+   ═══════════════════════════════════════════════════════════════════ */
+:root[data-cb="on"] {
+  --urgent:        #DC267F;  /* magenta */
+  --warn:          #FE6100;  /* orange  */
+  --ok:            #1AA08D;  /* teal    */
+
+  --urgent-bg:     color-mix(in srgb, var(--urgent) 14%, transparent);
+  --urgent-border: color-mix(in srgb, var(--urgent) 38%, transparent);
+  --warn-bg:       color-mix(in srgb, var(--warn) 14%, transparent);
+  --ok-bg:         color-mix(in srgb, var(--ok) 14%, transparent);
+  --ok-border:     color-mix(in srgb, var(--ok) 32%, transparent);
+
+  --glow-ok:       0 0 8px var(--ok);
+  --glow-urgent:   0 0 8px var(--urgent);
+}

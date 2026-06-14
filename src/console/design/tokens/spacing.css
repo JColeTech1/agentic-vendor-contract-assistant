@@ -1,0 +1,41 @@
+/* ───────── Spacing, radius, shadow & motion tokens ─────────
+   The layout is built on tight, even padding (10–18px) inside cards and a
+   1px hairline grid between the two panels. Radii come in two sizes; the
+   pill (badges/chips) is effectively a fixed 20px. Glow shadows — not drop
+   shadows — communicate focus and live status.                          */
+
+:root {
+  /* Spacing scale */
+  --space-1:  4px;
+  --space-2:  7px;
+  --space-3:  8px;
+  --space-4:  10px;
+  --space-5:  12px;
+  --space-6:  14px;
+  --space-7:  16px;
+  --space-8:  18px;
+  --space-9:  20px;
+
+  /* Radii */
+  --radius:      8px;   /* controls, small cards, inputs */
+  --radius-lg:   12px;  /* cards, bubbles, alert strip */
+  --radius-sm:   6px;   /* citation chips, hover rows */
+  --radius-pill: 20px;  /* badges, chips, status pills */
+
+  /* Borders */
+  --border-width: 1px;
+  --accent-bar:   3px;  /* todo left-accent rail */
+
+  /* Glow shadows (focus / live / active) */
+  --glow-accent: 0 0 18px var(--accent-glow);
+  --glow-ok:     0 0 8px var(--ok);
+  --glow-urgent: 0 0 8px var(--urgent);
+  --ring-accent: 0 0 0 1px var(--accent-glow), 0 0 18px var(--accent-glow);
+  --ring-focus:  0 0 0 3px var(--accent-glow);
+
+  /* Motion */
+  --ease:           ease;     /* @kind other */
+  --dur-fast:       .15s;      /* @kind other */
+  --dur-base:       .28s;      /* @kind other */
+  --transition-card: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
+}

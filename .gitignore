@@ -1,10 +1,28 @@
+# ── Secrets — NEVER commit ──
+.env
+.env.local
+.env.*.local
+env.download
+
 # ── Local test files with hardcoded hackathon credentials — NEVER commit ──
 test.html
 test.ps1
 serve.ps1
-.env.local
-env.download
+contoso-contracts.html
+
+# ── Throwaway diagnostics / captured responses ──
+diag.mjs
+probe_raw.json
+*.probe.json
+eval-agent.mjs
+eval-results.json
+server.log
+
+# ── Internal working docs — not for the public repo ──
+CLAUDE.md
+TASKS.md
 
 # ── Node / Vite build artifacts ──
 node_modules/
 dist/
+.vite/
