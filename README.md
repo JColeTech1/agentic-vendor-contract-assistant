@@ -66,6 +66,18 @@ falls back to a built-in canned answer engine that mirrors the real corpus. Live
 
 ## Run it locally
 
+### No terminal? Two-click launcher
+
+You only need [Node.js](https://nodejs.org) (v20.6+) installed and your own API keys.
+
+- **Windows:** double-click **`1 - Set API keys.bat`** → paste your keys (see [SETUP.md](SETUP.md)),
+  save, close. Then double-click **`2 - Launch.bat`** → it installs dependencies on first run, starts
+  everything, and opens your browser. (Close the two command windows to stop.)
+- **macOS / Linux:** run **`./start.command`** once to create/edit your keys, then again to launch.
+  (On macOS, the first time: right-click → Open.)
+
+### From the terminal
+
 **Prerequisites:** Node 20.6+ (uses `node --env-file`). Azure resources per [SETUP.md](SETUP.md).
 
 ```bash
