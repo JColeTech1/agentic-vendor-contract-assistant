@@ -103,7 +103,9 @@ function ReviewSidebar({ items, workflow, alertMode, addedId, filedIds, onAsk, o
           onMouseEnter={(e) => (e.currentTarget.style.color = "var(--text-primary)")} onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}>⚙</button>
       </div>
       <div style={{ fontSize: 11, color: autoPilot ? "var(--accent)" : "var(--text-muted)", marginTop: -4 }}>{WF_LABEL[workflow]} view · {autoPilot ? "✦ Auto-pilot drafting notices" : "Manual review"}</div>
-      {body}
+      {items.length === 0
+        ? <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.6, marginTop: 4 }}>Your queue is empty. Ask about your contracts, then <b style={{ color: "var(--text-secondary)" }}>+ Add to queue</b> the agent's recommended actions to track their deadlines here.</div>
+        : body}
     </aside>
   );
 }
@@ -134,10 +136,13 @@ function NoticeDraftModal({ item, onApprove, onClose }) {
 
 // ───────── Chat ─────────
 function RecoBlock({ recos, isAdded, onAddReco, autoPilot }) {
+  const [dismissed, setDismissed] = aUseState(() => new Set());
+  const visible = recos.filter((r) => !dismissed.has(r.id));
+  if (!visible.length) return <div style={{ marginTop: 4, fontSize: 11.5, color: "var(--text-muted)", fontStyle: "italic" }}>All recommendations handled.</div>;
   return (
     <div style={{ marginTop: 4, background: "var(--surface-2)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "10px 12px", display: "flex", flexDirection: "column", gap: 9 }}>
       <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--text-muted)", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><span style={{ color: "var(--accent)" }}>✦</span> Recommended actions{autoPilot && <span style={{ color: "var(--accent)", fontWeight: 700, letterSpacing: 0 }}>· auto-pilot on</span>}</div>
-      {recos.map((r) => {
+      {visible.map((r) => {
         const added = isAdded(r.id);
         const auto = autoPilot && r.priority === "urgent";
         return (
@@ -148,6 +153,8 @@ function RecoBlock({ recos, isAdded, onAddReco, autoPilot }) {
               onMouseEnter={(e) => { if (!added) { e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.color = "var(--accent)"; } }} onMouseLeave={(e) => { if (!added) { e.currentTarget.style.borderColor = "var(--border-strong)"; e.currentTarget.style.color = "var(--text-primary)"; } }}>
               {added ? (auto ? "✓ Auto-added" : "✓ On your board") : "+ Add to queue"}
             </button>
+            {!added && <button onClick={() => setDismissed((s) => new Set(s).add(r.id))} title="Dismiss this recommendation" style={{ flexShrink: 0, background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 11, fontWeight: 600 }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--urgent)")} onMouseLeave={(e) => (e.currentTarget.style.color = "var(--text-muted)")}>Dismiss</button>}
           </div>
         );
       })}
@@ -165,7 +172,7 @@ function ChatMessage({ m, isAdded, onAddReco, autoPilot, showRecos }) {
   return (
     <div style={{ alignSelf: "flex-start", maxWidth: "88%", display: "flex", flexDirection: "column", gap: 6 }}>
       <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 6 }}>
-        vendor-contract-assistant<span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", padding: "1px 6px", borderRadius: 4, background: m.live ? "var(--ok-bg)" : "var(--surface-4)", color: m.live ? "var(--ok)" : "var(--text-secondary)" }}>{m.live ? "live" : "demo"}</span>
+        vendor-contract-assistant<span style={{ fontSize: 9, fontWeight: 700, letterSpacing: "0.05em", padding: "1px 6px", borderRadius: 4, background: m.live ? "var(--ok-bg)" : "var(--surface-4)", color: m.live ? "var(--ok)" : "var(--text-secondary)" }}>{m.live ? "live" : "offline"}</span>
       </div>
       <div style={{ background: "var(--surface-3)", border: "1px solid var(--border)", borderRadius: "var(--radius-lg)", padding: "12px 15px", fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap", color: "var(--text-primary)" }}>{m.text}</div>
       {m.citations?.length > 0 && <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>{m.citations.map((c) => <A_Citation key={c}>{c}</A_Citation>)}</div>}

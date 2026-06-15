@@ -63,11 +63,13 @@ Vite dev server :5173  ──proxy /api──►  Node API proxy  (server.mjs) :
   `/api/document` (reconstructs a document's verbatim text from the retrieval snippets). Nothing is
   fabricated; citations are derived from the agent's real retrieval, or the file it computed over.
 
-### Demo mode (works with no backend)
+### No canned answers — grounded or nothing
 
-If the proxy isn't running (or rate-limits), `askContract()` returns `{ live: false }` and the console
-falls back to a built-in canned engine that mirrors the corpus. Live answers are badged **live**;
-fallbacks **demo**. The UI never breaks during a recording.
+There are **no fabricated answers anywhere**. The agent is the only source of truth. If the proxy isn't
+running (or rate-limits), `askContract()` returns `{ live: false }` and the chat says so honestly —
+"I can't reach the agent, so I won't guess" — rather than synthesizing a reply. Live answers are badged
+**live**; an unreachable agent is badged **offline**. (The rest of the UI — graph, knowledge base,
+workbook, status — still renders from the local data layer.)
 
 ---
 
@@ -138,13 +140,13 @@ vite.config.js         # dev server + /api proxy to :8799
 SETUP.md               # what APIs you need + how to wire them
 1 - Set API keys.bat · 2 - Launch.bat · start.command   # no-terminal launchers
 src/
-  lib/foundry.js       # browser → /api/* (demo fallback, lazy document cache)
+  lib/foundry.js       # browser → /api/* (offline-safe, lazy document cache)
   console/
     main.jsx           # mounts the app
     app.jsx            # shell: header, tabs, stores (chat, review, settings)
     data.js            # the data layer (contract corpus + helpers)
     ui.jsx             # shared primitives (Badge, Chip, Citation, Countdown, …)
-    chat.jsx           # demo-mode engine + citation/reco derivation
+    chat.jsx           # citation + recommendation derivation (no canned answers)
     AssistantTab.jsx KnowledgeBaseTab.jsx GraphTab.jsx WorkbookTab.jsx SettingsPage.jsx ConversationsRail.jsx
     design/            # CSS tokens (dark / light / colour-blind themes)
 ```

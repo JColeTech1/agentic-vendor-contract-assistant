@@ -21,6 +21,7 @@ vite.log
 
 # ── Internal-only docs (not for the public repo) ──
 SCRIPT.md
+INTERFACE-DRAFT.md
 
 # ── Internal working docs — not for the public repo ──
 CLAUDE.md

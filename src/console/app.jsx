@@ -5,7 +5,7 @@ import { KnowledgeBaseTab as S_KB } from "./KnowledgeBaseTab.jsx";
 import { GraphTab as S_Graph } from "./GraphTab.jsx";
 import { WorkbookTab as S_Workbook } from "./WorkbookTab.jsx";
 import { SettingsPage as S_Settings } from "./SettingsPage.jsx";
-import { demoAnswer as S_demoAnswer, recosFromCitations, citationsFromAnswer } from "./chat.jsx";
+import { recosFromCitations, citationsFromAnswer } from "./chat.jsx";
 import * as SDATA from "./data.js";
 import { askContract, checkConnection } from "../lib/foundry.js";
 import React, { useState as sUseState, useEffect as sUseEffect, useRef as sUseRef } from "react";
@@ -36,9 +36,13 @@ function useSettings() {
 
 // ───────── Review queue store ─────────
 function useReview() {
-  const [items, setItems] = sUseState(() => SDATA.buildReviewItems());
+  // Seeded with the contracts that already need attention (urgent/warn), then
+  // PERSISTED to localStorage so deletes/additions stick across refresh + new chats.
+  // First load seeds the queue; thereafter the saved queue (incl. your deletions) wins.
+  const [items, setItems] = sUseState(() => { const s = readLS("cci-review", null); return Array.isArray(s) ? s : SDATA.buildReviewItems(); });
   const [addedId, setAddedId] = sUseState(null);
   const [filedIds, setFiledIds] = sUseState(() => new Set());
+  sUseEffect(() => writeLS("cci-review", items), [items]);
   const hasItem = (id) => items.some((i) => i.id === id);
   const addItems = (recos, ctx = {}) => {
     const ids = new Set(items.map((i) => i.id));
@@ -109,8 +113,8 @@ function useChats() {
     setLoading(true); setActivePlan([]);
 
     // Ask the real Foundry agent. askContract never throws — it returns
-    // { live:false } and degrades to the kit's canned demo engine when the
-    // local proxy isn't reachable, so the UI keeps working offline.
+    // { live:false } if the proxy is unreachable, and we show an honest
+    // "can't reach the agent" message (no canned answers, ever).
     const res = await askContract(q, { memory });
     let answer, citations, queryPlan, recos, live;
     if (res.live) {
@@ -118,10 +122,15 @@ function useChats() {
       // Prefer the agent's retrieval-derived citations; if it computed the answer
       // (no retrieval), map vendors named in the answer to their source files.
       citations = (res.citations && res.citations.length) ? res.citations : citationsFromAnswer(answer);
-      recos = recosFromCitations(citations); live = true;
+      // Recommendations from BOTH the citation AND the vendors named in the answer —
+      // so computed answers (cited to the register, not a contract) still surface actions.
+      const recoFiles = Array.from(new Set([...(res.citations || []), ...citationsFromAnswer(answer)]));
+      recos = recosFromCitations(recoFiles); live = true;
     } else {
-      const d = S_demoAnswer(q, memory);
-      answer = d.answer; citations = d.citations; queryPlan = d.queryPlan; recos = d.recos || []; live = false;
+      // Agent unreachable — NO canned answer. We only answer from the grounded
+      // knowledge base, so we say so honestly instead of fabricating one.
+      answer = "I can't reach the contract agent right now, so I won't guess — every answer here is grounded in the live knowledge base. Make sure the API server is running (npm run server) and ask again.";
+      citations = []; queryPlan = []; recos = []; live = false;
     }
 
     // Stream the reasoning-trace steps into the topbar one-by-one.
@@ -178,7 +187,7 @@ function App() {
   // Live/demo badge — reflects whether the local Foundry proxy is answering.
   const [conn, setConn] = sUseState({ status: "demo", label: "Demo mode" });
   sUseEffect(() => {
-    checkConnection().then((c) => setConn({ status: c.status, label: c.status === "live" ? "Foundry agent connected" : "Demo mode" }));
+    checkConnection().then((c) => setConn({ status: c.status, label: c.status === "live" ? "Foundry agent connected" : "Agent offline" }));
   }, []);
 
   // Provenance helpers — remember which chat/answer produced a queued action.
