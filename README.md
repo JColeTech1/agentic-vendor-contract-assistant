@@ -50,6 +50,13 @@ Vite dev server :5173  ──proxy /api──►  Node API proxy  (server.mjs) :
                                    Azure AI Foundry agent  ──grounded on──►  knowledge base
 ```
 
+**The agent's two grounded lanes.** The Foundry agent answers by routing each question to one of two sources:
+
+- **Narrative lane (Foundry IQ):** the full contracts, stored in Azure Blob Storage and grounded through a Foundry IQ knowledge base (`kb-contracts`) — used for wording and meaning, cited back to the source contract.
+- **Structured lane (Azure AI Content Understanding):** a register extracted from the contracts into a typed table (`extracted_register.csv`), queried with Code Interpreter — used for anything countable, comparable, or date-based (totals, rankings, renewal math).
+
+The agent decides per question which lane to use, and combines them for mixed questions. Business rules — notice-deadline math, redundancy grouping, entity resolution across inconsistent legal names, and grounded refusal — are encoded in the agent instructions.
+
 - **Frontend** — React 18 + Vite, single entry. The UI lives in [`src/console/`](src/console);
   `src/console/data.js` is the single data layer (the 16-contract corpus + helpers) that every tab
   renders from — generically, so it scales to any corpus. Design tokens (dark / light / colour-blind)
@@ -70,6 +77,17 @@ running (or rate-limits), `askContract()` returns `{ live: false }` and the chat
 "I can't reach the agent, so I won't guess" — rather than synthesizing a reply. Live answers are badged
 **live**; an unreachable agent is badged **offline**. (The rest of the UI — graph, knowledge base,
 workbook, status — still renders from the local data layer.)
+
+---
+
+## Contract extraction
+
+The structured register is produced by a custom Azure AI Content Understanding analyzer
+(`extraction/contract-analyzer-schema-v1.json`) that reads each contract PDF and extracts the register
+fields, run via `extraction/run_all_contracts.py`. The schema
+(`extraction/contract-register-schema-v1.md`) keeps numeric values numeric so sums and rankings stay
+correct, and sets a `confidence_flag` of "review" on any field it can't cleanly resolve — so uncertain
+rows flag themselves for human review.
 
 ---
 
