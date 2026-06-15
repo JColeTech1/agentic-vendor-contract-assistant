@@ -1,0 +1,102 @@
+{
+  "analyzerId": "contract_register_analyzer_v1",
+  "name": "Vendor Contract Register Analyzer",
+  "description": "Extracts the structured register fields from a single vendor contract. Generic across clients: descriptions tell the model how to read each field, never what any specific contract says. Pairs with contract-register-schema-v1 (14 columns). source_contract and confidence_flag are NOT extracted here: source_contract comes from file metadata, and confidence_flag is derived downstream from CU's native per-field confidence + estimateFieldSourceAndConfidence output.",
+  "baseAnalyzerId": "prebuilt-document",
+  "config": {
+    "returnDetails": true,
+    "enableOcr": true,
+    "enableLayout": true,
+    "estimateFieldSourceAndConfidence": true,
+    "tableFormat": "html"
+  },
+  "fieldSchema": {
+    "name": "ContractRegisterFields",
+    "fields": {
+      "vendor": {
+        "type": "string",
+        "method": "extract",
+        "description": "The vendor / service-provider company name as written on the contract. This is the counterparty supplying the goods or services, NOT the client/customer."
+      },
+      "client_name": {
+        "type": "string",
+        "method": "extract",
+        "description": "The client/customer company name exactly as written, preserving the legal suffix (e.g. 'LLC' or 'Inc.') and punctuation. Do not normalize, expand, or standardize the suffix."
+      },
+      "service_category": {
+        "type": "string",
+        "method": "classify",
+        "enum": [
+          "project-management",
+          "CRM",
+          "marketing-analytics",
+          "creative-design",
+          "stock-media",
+          "email-esp",
+          "accounting-payroll",
+          "IT-managed-services",
+          "telecom",
+          "cloud-hosting",
+          "staffing",
+          "benefits-broker",
+          "office-lease",
+          "equipment-lease",
+          "cleaning",
+          "other"
+        ],
+        "description": "The single primary service category for the core function this vendor provides. Pick the best-fit category. Use 'other' only when none apply."
+      },
+      "annual_value": {
+        "type": "number",
+        "method": "extract",
+        "description": "The stated annual total fee as a plain number, no currency symbol or thousands separators (e.g. 54000). Read the explicit annual total the contract states (e.g. 'totaling USD $54,000 annually'). Do NOT compute it from a per-unit or per-seat rate times a quantity, and do NOT sum monthly figures yourself. If the contract states only a monthly or other periodic fee with no stated annual total, leave this null and put the figure in annual_value_note. If there is no fixed periodic fee (variable, hourly, or usage-based), leave this null."
+      },
+      "annual_value_note": {
+        "type": "string",
+        "method": "generate",
+        "description": "Short context ONLY when annual_value cannot be cleanly resolved to a single stated annual number (e.g. a variable/usage-based fee, or only a monthly figure is stated). Leave empty whenever a clean stated annual total exists."
+      },
+      "currency": {
+        "type": "string",
+        "method": "extract",
+        "description": "The ISO currency code of the contract amounts (e.g. USD)."
+      },
+      "renewal_type": {
+        "type": "string",
+        "method": "classify",
+        "enum": ["auto", "manual", "none"],
+        "description": "How the contract renews. 'auto' = renews automatically unless cancelled within a notice window. 'manual' = requires an affirmative action to renew. 'none' = a fixed term that simply ends with no renewal mechanism."
+      },
+      "renewal_date": {
+        "type": "date",
+        "method": "extract",
+        "description": "The next renewal or expiry date of the contract."
+      },
+      "notice_days": {
+        "type": "number",
+        "method": "extract",
+        "description": "The required non-renewal / cancellation notice period expressed in days (e.g. 30, 60, 90). If the contract states the period in weeks or months, convert to a number of days."
+      },
+      "escalation_type": {
+        "type": "string",
+        "method": "classify",
+        "enum": ["CPI", "fixed-percent", "usage", "none"],
+        "description": "The type of price increase applied on renewal. 'CPI' = tied to an inflation / consumer-price index. 'fixed-percent' = a stated fixed percentage. 'usage' = tied to consumption or volume. 'none' = no price-increase clause."
+      },
+      "escalation_pct": {
+        "type": "number",
+        "method": "extract",
+        "description": "The fixed percentage increase when escalation_type is 'fixed-percent' (e.g. 5 for a 5% increase). Leave null for any other escalation type."
+      },
+      "has_dpa": {
+        "type": "string",
+        "method": "classify",
+        "enum": ["yes", "no"],
+        "description": "Whether the contract carries a data processing addendum (DPA), a HIPAA business associate agreement (BAA), or an equivalent written data-privacy / data-protection obligation. A general confidentiality or security clause alone does NOT count: answer 'no' when there is no specific data-processing/privacy obligation."
+      }
+    }
+  },
+  "models": {
+    "completion": "gpt-5.2"
+  }
+}

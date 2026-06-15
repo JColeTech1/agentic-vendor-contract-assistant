@@ -1,0 +1,17 @@
+source_contract,vendor,client_name,service_category,annual_value,annual_value_note,currency,renewal_type,renewal_date,notice_days,escalation_type,escalation_pct,has_dpa,confidence_flag,review_fields
+ArchivePix-Media-License_APX-MED-2025-0810.pdf,"ArchivePix Media, Inc.","Contoso Marketing, LLC",stock-media,9600,,USD,auto,2026-08-10,30,fixed-percent,10,no,clear,
+Cadence-Work-OS-Subscription_CAD-WOS-2024-0901.pdf,"Cadence Work OS, Inc.","Contoso Marketing, LLC",project-management,28800,,USD,auto,2026-09-01,60,fixed-percent,6,yes,review,annual_value
+Harborline-Office-Lease_HLP-LSE-2022-0701.pdf,"Harborline Properties, LP","Contoso Marketing, LLC",office-lease,390000,,USD,manual,2027-07-01,120,fixed-percent,3,no,review,escalation_pct
+Insightline-Analytics-Services_ISL-ANL-2025-0820.pdf,Insightline Analytics Corp.,"Contoso Marketing, LLC",marketing-analytics,54000,,USD,manual,2026-08-20,60,none,,yes,review,annual_value
+Keystone-Benefits-Group-Agreement_KBG-BEN-2024-0901.pdf,"Keystone Benefits Group, LLC","Contoso Marketing, LLC",benefits-broker,24000,,USD,auto,2026-09-01,60,none,,yes,review,annual_value
+Ledgerwise_Accounting_Contract.pdf,"Ledgerwise Accounting & Payroll, LLC","Contoso Marketing, Inc.",accounting-payroll,48000,,USD,auto,2026-08-31,60,fixed-percent,3,yes,clear,
+Lumen-Creative-Staffing-MSA_LCS-MSA-2025-0115.pdf,"Lumen Creative Staffing, Inc.","Contoso Marketing, LLC",staffing,,"No fixed annual platform fee; total spend is variable and engagement-driven (historical annual spend approximately $210,000).",,manual,2027-01-15,30,fixed-percent,4,no,review,"annual_value_note, renewal_type, escalation_pct"
+Meridian-Office-Systems-Lease_MOS-LSE-2022-0101.pdf,"Meridian Office Systems, LLC","Contoso Marketing, LLC",equipment-lease,18000,,USD,none,2026-12-31,90,none,,no,clear,
+PristineWorks-Cleaning-Agreement_PW-SVC-2025-0312.pdf,PristineWorks Facility Services LLC,"Contoso Marketing, LLC",cleaning,28800,,USD,none,2026-08-31,60,none,,no,review,"annual_value, renewal_type"
+Relayworks_CRM_Agreement.pdf,"Relayworks CRM, Inc.","Contoso Marketing, LLC",CRM,96000,,USD,auto,2027-02-01,90,CPI,,yes,clear,
+SecureHaven-Managed-IT-Agreement_SHV-MSP-2024-0915.pdf,"SecureHaven IT Partners, LLC","Contoso Marketing, LLC",IT-managed-services,156000,,USD,auto,2026-09-15,90,CPI,,yes,clear,
+Sendcrest_ESP_Agreement.pdf,"Sendcrest Email, Inc.","Contoso Marketing, Inc.",email-esp,30000,,USD,auto,2026-07-31,60,usage,,yes,review,annual_value
+Stratus-Cloud-Hosting-Agreement_STR-2023-0417.pdf,"Stratus Cloud Infrastructure, Inc.","Contoso Marketing, LLC",cloud-hosting,144000,,USD,auto,2026-07-01,90,CPI,,yes,clear,
+Tasklytic-SaaS-Subscription_TSK-SUB-2024-1182.pdf,Tasklytic Software Ltd.,"Contoso Marketing, LLC",project-management,54000,,USD,auto,2026-08-15,30,fixed-percent,7,no,review,has_dpa
+Veritel-Communications-Agreement_VTL-TEL-2024-1015.pdf,"Veritel Communications, Inc.","Contoso Marketing, LLC",telecom,36000,,USD,auto,2026-10-15,60,fixed-percent,8,no,review,annual_value
+pixelforge-creative-suite.pdf,"Pixelforge Creative Suite, Ltd.","Contoso Marketing, LLC",creative-design,68400,,USD,auto,2026-09-30,60,fixed-percent,7,no,review,escalation_pct
