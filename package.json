@@ -1,7 +1,7 @@
 {
-  "name": "contoso-contract-intelligence",
+  "name": "agentic-vendor-contract-assistant",
   "version": "1.0.0",
-  "description": "Contoso Contract Intelligence — local React dashboard + chat grounded on a Foundry IQ agent",
+  "description": "Agentic Vendor Contract Assistant — local React console + chat grounded on a Foundry IQ agent",
   "type": "module",
   "scripts": {
     "dev": "vite",
